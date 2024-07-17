@@ -1,9 +1,7 @@
 from typing import Annotated
-
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from starlette import status
-
 import models
 from fastapi import FastAPI, Depends, HTTPException, Path
 from database import engine, sessionLocal
@@ -32,7 +30,7 @@ class TodoRequest(BaseModel):
     completed: bool
 
 
-@app.get("/",  status_code=status.HTTP_200_OK)
+@app.get("/", status_code=status.HTTP_200_OK)
 async def read_all(db: db_dependency):
     return db.query(Todos).all()
 
@@ -50,4 +48,28 @@ async def read_todo(db: db_dependency, todo_id: int = Path(gt=0)):
 async def create_todo(db: db_dependency, todo_request: TodoRequest):
     todo_model = Todos(**todo_request.model_dump())
     db.add(todo_model)
+    db.commit()
+
+
+@app.put("/todo/{todo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def update_todo(db: db_dependency, todo_request: TodoRequest, todo_id: int = Path(gt=0)):
+    todo_model = db.query(Todos).filter(Todos.id == todo_id).first()
+    if todo_model is None:
+        raise HTTPException(404, "Todos not found")
+
+    todo_model.title = todo_request.title
+    todo_model.description = todo_request.description
+    todo_model.priority = todo_request.priority
+    todo_model.completed = todo_request.completed
+    db.add(todo_model)
+    db.commit()
+
+
+@app.delete("/todo/{todo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_todo(db: db_dependency, todo_id: int = Path(gt=0)):
+    todo_model = db.query(Todos).filter(Todos.id == todo_id).first()
+    if todo_model is None:
+        raise HTTPException(404, "Todos not found")
+
+    db.delete(todo_model)
     db.commit()
