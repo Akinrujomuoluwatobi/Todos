@@ -8,6 +8,7 @@ from models import Todos
 
 router = APIRouter()
 
+
 def get_db():
     db = sessionLocal()
     try:
