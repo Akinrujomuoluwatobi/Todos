@@ -1,15 +1,24 @@
+from datetime import timedelta, datetime, timezone
 from typing import Annotated
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from starlette import status
 from database import sessionLocal
 from models import Users
 from passlib.context import CryptContext
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from jose import jwt, JWTError
 
-authRouter = APIRouter()
+authRouter = APIRouter(
+    prefix='/auth',
+    tags=['auth']
+)
+SECRET_KEY = 'cecfa7954ffafdd40dd8101c683ec1604edb58aeda60636380788d4de1e52833'
+ALGORITHM = 'HS256'
+
 bycrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token")
 
 
 def get_db():
@@ -32,7 +41,11 @@ class UserRequest(BaseModel):
     role: str
 
 
-@authRouter.post("/auth", status_code=status.HTTP_201_CREATED)
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+@authRouter.post("/", status_code=status.HTTP_201_CREATED)
 async def create_user(db: db_dependency, user_request: UserRequest):
     create_user_model = Users(
         email=user_request.email,
@@ -48,13 +61,30 @@ async def create_user(db: db_dependency, user_request: UserRequest):
     db.commit()
 
 
-@authRouter.post("/token")
+@authRouter.post("/token", response_model=Token)
 async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency):
 
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
-        return "Aduthentication Failed"
-    return "Authentication Successful"
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate user.')
+
+    token = create_access_token(user.username, user.id, timedelta(minutes=20))
+    return {"access_token": token, "token_type": "bearer"}
+
+
+async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, ALGORITHM)
+        username: str = payload.get('sub')
+        id: str = payload.get('id')
+
+        if username is None or id is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate user.')
+
+        return {'username': username, 'id': id}
+
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate user.')
 
 
 def authenticate_user(username: str, password: str, db):
@@ -64,5 +94,12 @@ def authenticate_user(username: str, password: str, db):
     if not bycrypt_context.verify(password, user.hashed_password):
         return False
 
-    return True
+    return user
+
+
+def create_access_token(username: str, user_id: int, expired_delta: timedelta):
+    encode = {'sub': username, 'id': user_id}
+    expires = datetime.now(timezone.utc) + expired_delta
+    encode.update({'exp': expires})
+    return jwt.encode(encode, SECRET_KEY, ALGORITHM)
 
