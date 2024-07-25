@@ -37,6 +37,7 @@ class UserRequest(BaseModel):
     username: str
     first_name: str
     last_name: str
+    phone_number: str
     password: str
     role: str
 
@@ -55,7 +56,8 @@ async def create_user(db: db_dependency, user_request: UserRequest):
         last_name=user_request.last_name,
         role=user_request.role,
         hashed_password=bycrypt_context.hash(user_request.password),
-        is_active=True
+        is_active=True,
+        phone_number=user_request.phone_number
     )
 
     db.add(create_user_model)

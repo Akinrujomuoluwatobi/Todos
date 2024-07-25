@@ -20,6 +20,10 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=6)
 
 
+class UpdatePhoneNumberRequest(BaseModel):
+    phone_number: str = Field(min_length=6)
+
+
 def get_db():
     db = sessionLocal()
     try:
@@ -55,5 +59,20 @@ async def change_password(db: db_dependency, user: user_dependency, change_passw
     if not bycrypt_context.verify(change_password_request.old_password, user_model.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Error on password change')
     user_model.hashed_password = bycrypt_context.hash(change_password_request.new_password)
+    db.add(user_model)
+    db.commit()
+
+
+@router.put('/update_phone_number', status_code=status.HTTP_200_OK)
+async def update_phone_number(db: db_dependency, user: user_dependency, phoneNumberRequest: UpdatePhoneNumberRequest):
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='User not authenticated')
+
+    user_model = db.query(Users).filter(Users.id == user.get('id')).first()
+
+    if user_model is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='User record not found')
+
+    user_model.phone_number = phoneNumberRequest.phone_number
     db.add(user_model)
     db.commit()
